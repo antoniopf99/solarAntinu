@@ -15,16 +15,15 @@ double Xsection(double Enu, double T, void *p){
 	zprime_param zp = *(zprime_param *)p;
 	zp.Enu = Enu;
 	zp.T = T;
-	return(nueScatteringJUNO(zp));
+	return(nueScatteringBSM(zp));
 }
 
 double survivalProb_param(double Enu, void *p){
 	osc_param osc_p = *(osc_param *)p;
 	double Rfrac = 0.05;
 
-	//double Pee = survivalProb_3genSun_Ad_freeparam(Enu, Rfrac, osc_p);//*sun_earth_prob_2layers(Rfrac, Enu, osc_p);
-	//double Pee = survivalProb_3genSun_Ad_freeparam(Enu, Rfrac, osc_p);
-	double Pee = sun_earth_prob_5layers(Rfrac, Enu, osc_p);
+	//double Pee = osc_p.exposure[osc_p.i]*survivalProb_3genSun_Ad_freeparam(Enu, Rfrac, osc_p);//*sun_earth_prob_2layers(Rfrac, Enu, osc_p);
+	double Pee = survivalProb_3genSun_Ad_freeparam(Enu, Rfrac, osc_p);
 
 	if(osc_p.prob_ee)
 		return(Pee);
@@ -32,13 +31,13 @@ double survivalProb_param(double Enu, void *p){
 }
 
 double Flux(double Enu){
-	return(solarFlux(3, Enu)/*8B*/+solarFlux(2, Enu)/*hep*/);
+	return(solarFlux(3, Enu));
 }
 
 double Ntau_func(double E){
 	double Nelectrons1 = 7.9*3.38*pow(10,32);
 	double Nelectrons2 = 12.2*3.38*pow(10,32);
-	double Nelectrons3 = 16.2*3.38*pow(10,32);
+	double Nelectrons3 = 16.5*3.38*pow(10,32);
 	double year = 3.154*pow(10,7);
 	year *= 10;
 	double Ntau1 = Nelectrons1*year;
@@ -46,11 +45,11 @@ double Ntau_func(double E){
 	double Ntau3 = Nelectrons3*year;
 	double Ntau;
 	if(E <= 3)
-		Ntau = Ntau1*0.51;
+		Ntau = Ntau1;
 	else if(E <= 5)
-		Ntau = Ntau2*0.41;//Bi-Tl correlation cut
+		Ntau = Ntau2;
 	else
-		Ntau = Ntau3*0.52;
+		Ntau = Ntau3;
 	return(Ntau);
 }
 
@@ -64,11 +63,8 @@ void calcula_eventos_Bins_duplos(double *N, signal_param sig, detector_param det
 		op.i = i;
 		sig.oscillation_param = (void *)(&op);
 		calcula_eventos_Bins(N_1d, sig, detec);
-		for(int j = 0; j < detec.numberOfBins; j++){
-			//N[i*detec.numberOfBins + j] = op.exposure[i]*N_1d[j];
-			N[i*detec.numberOfBins + j] = (1.0/op.n_exp_bins)*N_1d[j];
-		}
-		op.cosz += binsize;
+		for(int j = 0; j < detec.numberOfBins; j++)
+			N[i*detec.numberOfBins + j] = op.exposure[i]*N_1d[j];
 	}
 }
 
@@ -79,14 +75,12 @@ int main(){
 	string outdir = "results/";
 
 	ofstream saida;
-	string file_name = "junoevents_daynight.txt";
-	saida.open(outdir + file_name);
+	string file_name_base = "junoevents_regions_oscillation_daynight_";
 
 	int n_E_Bins = 140;
-	int n_cosz_Bins = 100;
+	int n_cosz_Bins = 1;
 	double binMin = 2;
 	double binMax = 16;
-	double binsize = (binMax - binMin)/n_E_Bins;
 	double Eres = 3;
 
 	double *T = new double [n_E_Bins*n_cosz_Bins];
@@ -124,13 +118,11 @@ int main(){
 	detec.numberOfBins = n_E_Bins;
 	detec.Ebinmin = binMin;
 	detec.Ebinmax = binMax;
-	detec.binsize = binsize;
+	detec.binsize = (binMax - binMin)/n_E_Bins;
 	detec.Eres = Eres;
 	detec.Ntau = &Ntau_func;
 
 	calcula_eventos_Bins_duplos(T, sig, detec);
-	cout << "Calculei o primeiro set!" << endl;
-
 	string BG_file = "JUNO_BG_total.txt";
 	seta_BG(N_BG_small, n_E_Bins, BG_file);
 	for(int i = 0; i < n_E_Bins; i++){
@@ -139,41 +131,56 @@ int main(){
 		}
 	}
 
-	//osc_p.theta12 = asin(sqrt(0.107));
-	//osc_p.Dmq21 = 4.8e-5;
-	osc_p.seta_osc_param(false);
-	osc_p.constroi_PMNS();
-	sig.oscillation_param = (void *)(&osc_p);
-	
-	calcula_eventos_Bins_duplos(N_obs, sig, detec);
-	cout << "Calculei o segundo set!" << endl;
-		
-	for(int i = 0; i < n_E_Bins*n_cosz_Bins; i++)
-		N_obs[i] += N_BG[i];
-
 	stat_params p;
 	p.nBins = n_E_Bins*n_cosz_Bins;
 	p.T = T;
-	p.N_obs = N_obs;
 	p.BG = N_BG;
 
 	p.sd = 0.05;
 	p.sb = 0.15;
 
-	chisquare_twopulls_JUNO(p, true);
+	/////////////////
 
-	double E = binMin, eventos;
+	double siq_ini = 0.2, siq_fim = 0.45;
+	double Dmq_ini = 0, Dmq_fim = 1.2e-4;
+	
+	int n_siq = 50, n_Dmq = 60;
 
-	for(int i = 0; i < n_E_Bins; i++){
-		eventos = 0;
-		for(int j = 0; j < n_cosz_Bins; j++){
-			eventos += N_obs[i + j*n_E_Bins];
-			//saida << i << " " << j << " " << T[i + j*n_E_Bins] << endl;
+	int n_of_arqs, n_arq_atual;
+	//cout << "Entre com o número de arquivos: ";
+	cin >> n_of_arqs;
+	//cout << "Entre com o número do arquivo atual: ";
+	cin >> n_arq_atual;
+
+	stringstream ss;
+	string numero_arquivo;
+	string txt = ".txt";
+	ss << n_arq_atual;
+	ss >> numero_arquivo;
+
+	saida.open(outdir + file_name_base + numero_arquivo + txt);
+	
+	double siq_step = (siq_fim - siq_ini)/n_siq;
+	double Dmq_step = (Dmq_fim - Dmq_ini)/n_Dmq;
+
+	int n_siq_piece = n_siq/n_of_arqs;
+	double siq_ini_desse = siq_ini + (n_arq_atual-1)*n_siq_piece*siq_step;
+	double siq_fim_desse = siq_ini + n_arq_atual*n_siq_piece*siq_step;
+
+	for(double siq = siq_ini_desse; siq < siq_fim_desse; siq += siq_step){
+		for(double Dmq = Dmq_ini; Dmq < Dmq_fim; Dmq += Dmq_step){
+			osc_p.theta12 = asin(sqrt(siq));
+			osc_p.Dmq21 = Dmq;
+			osc_p.constroi_PMNS();
+			sig.oscillation_param = (void *)(&osc_p);
+			calcula_eventos_Bins_duplos(N_obs, sig, detec);
+			for(int i = 0; i < n_E_Bins*n_cosz_Bins; i++)
+				N_obs[i] += N_BG[i];
+			p.N_obs = N_obs;
+			saida << siq << " " << Dmq << " " << chisquare_twopulls_JUNO(p, false) << endl;
 		}
-		saida << E << " " << eventos << endl;
-		E += binsize;
-		saida << E << " " << eventos << endl;
-	}
+		saida << endl;
+	}	
 
 	delete [] T;
 	delete [] N_obs;

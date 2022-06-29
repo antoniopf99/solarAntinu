@@ -1,49 +1,111 @@
 #include<iostream>
 #include<cmath>
 #include<fstream>
-#include"oscilation.h"
+#include"magnus_evolution.h"
+#include"constant_matter_evolution.h"
+#include"detectors.h"
 
 using namespace std;
 
+double survivalProb(double Enu, void *p){
+	osc_param op = *(osc_param *)(p);
+	double Pee = 0;
+	//double binsize = 2.0/op.n_exp_bins;
+	//double cosz = binsize/2;
+	for(int i = 0; i < op.n_exp_bins; i++){
+		//Pee += op.exposure[i]*survivalProb_3genSun_Ad_freeparam(Enu, Rfrac, op);//*sun_earth_prob_2layers(0.05, cosz, Enu, op);
+		//cosz += binsize;
+	}
+	return(Pee);
+}
+
+
+
 int main(){
-
-	/***********************/	
-	/*OUTPUT FILE DIRECTORY*/
-	/***********************/
-	//string file, outdir = "results/";
-	//ofstream saida;
-
 	seta_dados_Ne();
-
-	double L, E, *p = NULL;
-
-	L = 696342;
-
-	E = 0.01;
-
-	string file = "sunnumeric10MeV.txt";
-
-	cout << "A prob de sobrevivência deu " << survival_prob_sun(E, 0, L, 0.1, p, true, file) << endl;
-
-	//file = "sunnumeric.txt";
-	//saida.open(outdir + file);
-	//for(double E = 0.0001; E < 1; E *= 10)
-	//	cout << "Resultado para " << E*1000 << " MeV: " << survival_prob_sun(E, 0, L, 0.1, p, false, "") << endl;
-	//double E;
-	//file = "oscilaneutrino1GeV.txt";
-	//saida.open(outdir + file);
-	//for(double pot = -1; pot < 1.5; pot += 0.01){
-	//	E = pow(10,pot);
-	//	saida << E << " " << survivalProb_3genSun_Ad(E, 0) << endl; 
-	//}
-	//saida.close();
-	//file = "boronaverage48.txt";
-	//saida.open(outdir + file);
-	//	for(double pot = -1; pot < 1.5; pot += 0.01){
-	//	E = pow(10,pot);
-	//	saida << E << " " << survivalProb_3genSun_Ad_Boron(E) << endl; 
-	//}
-	//saida.close();
 	
+	string exposure_file = "JUNO_exposure_100bins.txt";
+	double exposure[100];
+
+	osc_param op;
+	seta_exposure(exposure, 100, exposure_file);
+	op.n_exp_bins = 100;
+	op.exposure = exposure;
+	op.seta_osc_param(false);
+	op.delta_CP = -M_PI/2;
+	op.constroi_PMNS();
+
+	op.h = 1;
+
+	double Rfrac = 0.05;
+
+	//double E;
+	//for(double logE = -2; logE < 8; logE += 0.05){
+	//	E = pow(10, logE);
+	//	cout << E << " " << survival_prob_sun_magnus(Rfrac, E, op) << endl;
+	//}
+
+	//for(double E = 200; E < 1800; E += 0.5){
+	//	cout << E << " ";
+	//	op.cosz = cos(M_PI/10.0);
+	//	cout << atmospheric_neutrino_5layers(1, 0, E, op) << " ";
+	//	op.cosz = cos(M_PI/4.0);
+	//	cout << atmospheric_neutrino_5layers(1, 0, E, op) << " ";
+	//	op.cosz = cos(M_PI/3.0);
+	//	cout << atmospheric_neutrino_5layers(1, 0, E, op) << " ";
+	//	op.cosz = cos(M_PI/2.5);
+	//	cout << atmospheric_neutrino_5layers(1, 0, E, op) << endl;
+	//}
+
+	double probmagnus, probconst5;
+	for(double E = 0.1; E < 20; E += 0.01){
+			cout << E << " ";
+			op.cosz = 0.1;
+			probmagnus = survival_prob_sun_ad_earth_magnus(0.05, E, op);
+			probconst5 = sun_earth_prob_5layers(Rfrac, E, op);
+			cout << probmagnus << " ";
+			cout << probconst5 << " ";
+			cout << probconst5 - probmagnus << " ";
+			op.cosz = 0.4;
+			probmagnus = survival_prob_sun_ad_earth_magnus(0.05, E, op);
+			probconst5 = sun_earth_prob_5layers(Rfrac, E, op);
+			cout << probmagnus << " ";
+			cout << probconst5 << " ";
+			cout << probconst5 - probmagnus << " ";
+			op.cosz = 0.6;
+			probmagnus = survival_prob_sun_ad_earth_magnus(0.05, E, op);
+			probconst5 = sun_earth_prob_5layers(Rfrac, E, op);
+			cout << probmagnus << " ";
+			cout << probconst5 << " ";
+			cout << probconst5 - probmagnus << " ";
+			op.cosz = 0.9;
+			probmagnus = survival_prob_sun_ad_earth_magnus(0.05, E, op);
+			probconst5 = sun_earth_prob_5layers(Rfrac, E, op);
+			cout << probmagnus << " ";
+			cout << probconst5 << " ";
+			cout << probconst5 - probmagnus << " ";
+			op.cosz = 1;
+			probmagnus = survival_prob_sun_ad_earth_magnus(0.05, E, op);
+			probconst5 = sun_earth_prob_5layers(Rfrac, E, op);
+			cout << probmagnus << " ";
+			cout << probconst5 << " ";
+			cout << probconst5 - probmagnus << endl;
+	}
+
+	//double E, prob;
+	//for(double cosz = 0.7; cosz < 1; cosz += 0.001){
+	//	for(double logE = -1; logE < 1.3; logE += 0.001){
+	//		op.cosz = cosz;
+	//		E = 1000*pow(10, logE);
+	//		prob = atmospheric_neutrino_5layers(1, 1, E, op);
+	//		//if(prob > 1 || prob < 0){
+	//		//	cout << "PROB " << prob << " EM cosz = " << cosz << " e E = " << E/1000.0 << " GeV." << endl;
+	//		//}
+	//		cout << (E/1000.0) << " " << cosz << " " << prob << endl;
+	//	}
+	//	//cout << endl;
+	//}
+
+
 	return(0);
 }

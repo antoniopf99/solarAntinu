@@ -1,10 +1,9 @@
-#include <iostream>
 #include<cmath>
 
-long double solarFlux(int type, long double Enu){
-	long double a[6][9];
+double solarFlux(int type, double Enu){
+	double a[6][9];
 	double Emax[6], norm[6];
-	long double fluxtotal, flux, N;
+	double fluxtotal, flux, N;
 
 	/*pp parameters*/
 	a[0][0] = -2.87034 * pow(10,-1);
@@ -86,7 +85,7 @@ long double solarFlux(int type, long double Enu){
 
 	fluxtotal = 0;
 	for(int i = 0; i <= 5; i ++){
-		//flux = 0.00000000001;
+		flux = 0;
 		if((type == 0 || type == i+1) && Enu < Emax[i]){
 			N = 0;
 			for(int j = 0; j <= 8; j++){

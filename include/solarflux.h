@@ -9,6 +9,6 @@ type = 3 -> 8B flux
 type = 4 -> 13N flux
 type = 5 -> 15O flux
 type = 6 -> 17F flux*/
-long double solarFlux(int type, long double Enu);
+double solarFlux(int type, double Enu);
 
 #endif

@@ -141,10 +141,10 @@ void leOsDados(vector<Reactor> &reatores, int quantosAnos){
 }
 
 long double customFlux(int type, int MOX, long double thermalPower, long double loadFactor, long double E, long double distance){
-	long double base = ((emMeVs(thermalPower) * (loadFactor/100) * FatorA(type,E)) / (4 * M_PI * pow(distance,2)));
+	long double base = ((/*emMeVs*/(6.2415093433 * pow(10,18) * thermalPower) * (loadFactor/100) * FatorA(type,E)) / (4 * M_PI * pow(distance,2)));
 	if(!MOX)
 		return(base);
-	long double mox = ((emMeVs(thermalPower) * (loadFactor/100) * FatorA(1,E)) / (4 * M_PI * pow(distance,2)));
+	long double mox = ((/*emMeVs*/(6.2415093433 * pow(10,18) * thermalPower) * (loadFactor/100) * FatorA(1,E)) / (4 * M_PI * pow(distance,2)));
 	return(0.7 * base + 0.3 * mox);
 }
 

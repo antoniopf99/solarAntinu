@@ -9,7 +9,7 @@
 
 using namespace std;
 
-typedef struct dat{
+typedef struct DAT{
 	double Rfrac;
 	double dat;
 	}data_point;
@@ -28,7 +28,7 @@ long double electron_density_sun_NA(long double Rfrac);
 //   cm^{-3}/N_A, where N_A is the Avogadro number
 long double interpola_electron_density(long double Rfrac);
 
-//ONLY WORKS UNTIL 0.5 OF SUNS RADIUS, REPRESENTET BY Rfrac
+//ONLY WORKS UNTIL 0.5 OF SUNS RADIUS, REPRESENTED BY Rfrac
 //0) Temperature in units of 10^6 deg (K)
 //1) Logarithm (to the base 10) of the electron density in units of
 //   cm^{-3}/N_A, where N_A is the Avogadro number

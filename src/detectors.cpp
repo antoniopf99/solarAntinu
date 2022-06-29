@@ -1,12 +1,12 @@
 #include"detectors.h"
 
-long double energyResolution(long double Eobs, long double Ereal, double Res){
+double energyResolution(double Eobs, double Ereal, double Res){
 	if(Ereal <= 0){
 		cout << "ERROR COMPUTING EVENT AT ZERO ENERGY! (At the energyResolution function)." << endl;
 		return(0);
 	}
-	long double d = ( (Res/100) * sqrt(Ereal) );// / (2 * sqrt(2*log(2)));
-	long double N = 1 / (sqrt(2*M_PI) * d);
+	double d = ( (Res/100) * sqrt(Ereal) );// / (2 * sqrt(2*log(2)));
+	double N = 1 / (sqrt(2*M_PI) * d);
 	return(N * exp(-0.5 * pow((Eobs - Ereal)/d,2)));
 }
 
@@ -15,111 +15,192 @@ double resolutionFactor(double Eini, double Efinal, double Ereal, double Res){
 	double final = gsl_sf_erf((Efinal - Ereal)/(sqrt(2)*d));
 	double ini = gsl_sf_erf((Eini - Ereal)/(sqrt(2)*d));
 	return((final - ini)/(2*sqrt(2*M_PI)));
-	//int N = 500;
-	//long double h = (Efinal - Eini) / N;
-	//long double soma = energyResolution(Eini,Ereal,Res) + energyResolution(Eini + N*h,Ereal,Res);
-	//for(long i = 1; i < N; i+=2){
-	//	soma += 4*energyResolution(Eini + i*h,Ereal,Res) + 2*energyResolution(Eini + (i+1)*h,Ereal,Res);
-	//}
-	//soma *= h/3;
-	//return(soma);
 }
 
-long double countRate_nu_e_Scattering(
-	long double (*Flux)(long double), 
-	long double (*Xsection)(long double, long double, double *), 
-	double *XsectionParameters, 
-	long double (*survivalProb)(long double, double *), 
-	double *survivalProbParameters,
-	double T)
-{
-	long double soma, Eanalmin, Eanalmax, h;
-	int N = 1000;
+double countRate_nu_e_Scattering_integrand(double E, void *sig_param){
+	signal_param p = *(signal_param *)(sig_param);
+	double T = ((zprime_param *)p.xsection_param)->T;
+	double flux = p.flux(E);
+	double xsection = p.xsection(E, T, p.xsection_param);
+	double survival_prob = p.oscillation_prob(E, p.oscillation_param);
+	osc_param op = *(osc_param*)(p.oscillation_param);
+	if(isnan(survival_prob)){
+		cout << "SURVIVAL PROB TÁ NAN! EM:" << endl;
+		cout << "E = " << E << endl;
+		cout << "cosz = " << op.cosz << endl;
+		cout << endl;
+	}
+	return(flux*xsection*survival_prob);
+}
+
+double countRate_nu_e_Scattering(double T, signal_param sig){
+	double Eanalmin, Eanalmax;
 	Eanalmin = 0.5*(T + sqrt(T*(T + 2*0.511)));
-	Eanalmax = 18.79;
-	h = (Eanalmax - Eanalmin) / N;
-	if(h<=0)
-		return(0);
-	soma = 0;
-	soma += Flux(Eanalmin)*Xsection(Eanalmin, T, XsectionParameters)*survivalProb(Eanalmin, survivalProbParameters);
-	soma += Flux(Eanalmin + N*h)*Xsection(Eanalmin + N*h, T, XsectionParameters)*survivalProb(Eanalmin + N*h, survivalProbParameters);
-	for(int i = 1; i < N; i+=2){
-		soma += 4*Flux(Eanalmin + i*h)*Xsection(Eanalmin + i*h, T, XsectionParameters)*survivalProb(Eanalmin + i*h, survivalProbParameters);
-		soma += 2*Flux(Eanalmin + (i+1)*h)*Xsection(Eanalmin + (i+1)*h, T, XsectionParameters)*survivalProb(Eanalmin + (i+1)*h, survivalProbParameters);
-	}
-	soma *= h/3;
-	return(soma);
+	Eanalmax = sig.max_flux_E;
+
+	zprime_param zp = *(zprime_param *)(sig.xsection_param);
+	osc_param osc_p = *(osc_param *)(sig.oscillation_param);
+
+	zp.T = T;
+	sig.xsection_param = (void *)(&zp);
+
+	integration_parameters quad_param;
+	quad_param.sig = sig;
+
+	gsl_function F;
+	F.function = &countRate_nu_e_Scattering_integrand;
+
+	double integral, resultado = 0, abserr;
+	size_t neval;
+
+	//gsl_integration_workspace *w = gsl_integration_workspace_alloc(1000);
+
+	/*contribution from the electron neutrino flux*/
+	zp.NC_and_CC = true;
+	osc_p.prob_ee = true;
+	quad_param.sig.xsection_param = (void *)(&zp);
+	quad_param.sig.oscillation_param = (void *)(&osc_p);
+	F.params = (void *)(&quad_param);
+	//gsl_integration_qags(&F, Eanalmin, Eanalmax, ERRO_ABS, ERRO_REL, MAX_SUB_INT, w, &integral, &abserr);
+	gsl_integration_qng(&F, Eanalmin, Eanalmax, ERRO_ABS, ERRO_REL, &integral, &abserr, &neval);
+	resultado += integral;
+
+	/*contribution from the heavy neutrino flavors flux*/
+	zp.NC_and_CC = false;
+	osc_p.prob_ee = false;
+	quad_param.sig.xsection_param = (void *)(&zp);
+	quad_param.sig.oscillation_param = (void *)(&osc_p);
+	F.params = (void *)(&quad_param);
+	//gsl_integration_qags(&F, Eanalmin, Eanalmax, ERRO_ABS, ERRO_REL, MAX_SUB_INT, w, &integral, &abserr);
+	gsl_integration_qng(&F, Eanalmin, Eanalmax, ERRO_ABS, ERRO_REL, &integral, &abserr, &neval);
+	resultado += integral;
+
+	//gsl_integration_workspace_free(w);
+	return(resultado);
 }
 
-double events_in_bin(
-	long double (*Flux)(long double), 
-	long double (*Xsection)(long double, long double, double *), 
-	double *XsectionParameters, 
-	long double (*survivalProb)(long double, double *), 
-	double *survivalProbParameters,
-	double Ebinmin,
-	double binsize,
-	long double Ntau,
-	double Eres)
-{
-	long double soma, Eanalmin, Eanalmax, h;
-	int N = 500;
-	Eanalmin = 0.001;
-	Eanalmax = 20;
-	h = (Eanalmax - Eanalmin) / N;
-	soma = 0;
-	soma += countRate_nu_e_Scattering(Flux, Xsection, XsectionParameters, survivalProb, survivalProbParameters, Eanalmin)*resolutionFactor(Ebinmin, Ebinmin + binsize, Eanalmin, Eres);
-	soma += countRate_nu_e_Scattering(Flux, Xsection, XsectionParameters, survivalProb, survivalProbParameters, Eanalmin + N*h)*resolutionFactor(Ebinmin, Ebinmin + binsize, Eanalmin + N*h, Eres);
-	for(int i = 0; i < N; i+=2){
-		soma += 4*countRate_nu_e_Scattering(Flux, Xsection, XsectionParameters, survivalProb, survivalProbParameters, Eanalmin + i*h)*resolutionFactor(Ebinmin, Ebinmin + binsize, Eanalmin + i*h, Eres);
-		soma += 2*countRate_nu_e_Scattering(Flux, Xsection, XsectionParameters, survivalProb, survivalProbParameters, Eanalmin + (i+1)*h)*resolutionFactor(Ebinmin, Ebinmin + binsize, Eanalmin + (i+1)*h, Eres);
-	}
-	soma *= h/3;
-	soma *= Ntau;
-	return(soma);
+double calcula_eventos_Bins_integrand(double T, void *quad_param){
+	integration_parameters qp = *(integration_parameters *)(quad_param);
+
+	double h = ((qp.Tanalmax - qp.Tanalmin) / (qp.N-1));
+
+	int i = (int)((T - qp.Tanalmin)/h);
+	double x1 = qp.T[i];
+	double x2 = qp.T[i+1];
+	double y1 = qp.countRate[i];
+	double y2 = qp.countRate[i+1];
+
+	double countRate = ((y2-y1)/(x2-x1))*(T-x1) + y1;
+
+	return(countRate*resolutionFactor(qp.E_current_bin, qp.E_current_bin + qp.detec.binsize, T, qp.detec.Eres));
 }
 
-void calcula_eventos_Bins(
-	double *Bins,
-	long double Ebinmin,
-	long double Ebinmax,
-	int numberOfBins,
-	long double (*Ntau)(long double),
-	long double (*Flux)(long double), 
-	long double (*Xsection)(long double, long double, double *), 
-	double *XsectionParameters, 
-	long double (*survivalProb)(long double, double *), 
-	double *survivalProbParameters,
-	double Eres)
-{
-	double binsize = (Ebinmax - Ebinmin) / numberOfBins;
-	/*Numeric precission*/
-	int N = 10000;
+void calcula_eventos_Bins(double *Bins, signal_param sig, detector_param detec){
+
+	/*NUMBER OF POINTS IN COUNT RATE INTERPOLATION*/
+	int N = 1000;
 
 	/*Analysis energy range of THE TRUE electron recoil*/
-	long double Tanalmin = 0.001;
-	long double Tanalmax = 20;
-	long double h = (Tanalmax - Tanalmin) / N;
+	double Tanalmin = 0.001;
+	double Tanalmax = 20;
+	double h = (Tanalmax - Tanalmin) / N;
 
-	long double *countRate = new long double [N+1];
+	double *countRate = new double [N+1];
 
 	for(int i = 0; i <= N; i++){
-		printf("Computando, %f%...\n", 100*(float)(i+1)/(N+1));
-		countRate[i] = countRate_nu_e_Scattering(Flux, Xsection, XsectionParameters, survivalProb, survivalProbParameters, Tanalmin + i*h);
+		//printf("Computando, %.2f %\n", 100*(float)(i+1)/(N+1));
+		countRate[i] = countRate_nu_e_Scattering(Tanalmin + i*h, sig);
 	}
 
-	long double E = Ebinmin;
-	for(int i = 0; i < numberOfBins; i++){
+	double E = detec.Ebinmin;
+	for(int i = 0; i < detec.numberOfBins; i++){
 		Bins[i] = 0;
-		Bins[i] += countRate[0]*resolutionFactor(E, E + binsize, Tanalmin, Eres);
-		Bins[i] += countRate[N]*resolutionFactor(E, E + binsize, Tanalmin + N*h, Eres);
+		/*Simpsons integration:*/
+		/////
+		Bins[i] += countRate[0]*resolutionFactor(E, E + detec.binsize, Tanalmin, detec.Eres);
+		Bins[i] += countRate[N]*resolutionFactor(E, E + detec.binsize, Tanalmin + N*h, detec.Eres);
 		for(int j = 0; j < N; j+=2){
-			Bins[i] += 4*countRate[j]*resolutionFactor(E, E + binsize, Tanalmin + j*h, Eres);
-			Bins[i] += 2*countRate[j+1]*resolutionFactor(E, E + binsize, Tanalmin + (j+1)*h, Eres);
+			Bins[i] += 4*countRate[j]*resolutionFactor(E, E + detec.binsize, Tanalmin + j*h, detec.Eres);
+			Bins[i] += 2*countRate[j+1]*resolutionFactor(E, E + detec.binsize, Tanalmin + (j+1)*h, detec.Eres);
 		}
 		Bins[i] *= h/3;
-		Bins[i] *= Ntau(E);
-		E += binsize;
+		/////
+		E += detec.binsize;
+		Bins[i] *= detec.Ntau(E);
 	}
 	delete [] countRate;
+}
+
+//void calcula_eventos_Bins(double *Bins, signal_param sig, detector_param detec){
+//	/*NUMBER OF POINTS IN COUNT RATE INTERPOLATION*/
+//	int N = 1000;
+//	/*Analysis energy range of THE TRUE electron recoil*/
+//	double Tanalmin = 0.001;
+//	double Tanalmax = 20;
+//	double h = (Tanalmax - Tanalmin) / N;
+//	double *T = new double [N+1];
+//	double *countRate = new double [N+1];
+//	for(int i = 0; i <= N; i++){
+//		//printf("Computando, %.2f %\n", 100*(float)(i+1)/(N+1));
+//		T[i] = Tanalmin +i*h;
+//		countRate[i] = countRate_nu_e_Scattering(T[i], sig);
+//	}
+//	integration_parameters quad_param;
+//	quad_param.sig = sig;
+//	quad_param.detec = detec;
+//	quad_param.Tanalmin = Tanalmin;
+//	quad_param.Tanalmax = Tanalmax;
+//	quad_param.N = N+1;
+//	quad_param.T = T;
+//	quad_param.countRate = countRate;
+//	gsl_integration_workspace *w = gsl_integration_workspace_alloc(1000);
+//	gsl_function F;
+//	F.function = &calcula_eventos_Bins_integrand;
+//	double integral, resultado = 0, abserr;
+//	size_t neval;
+//	double E = detec.Ebinmin;
+//	//quad_param.E_current_bin = detec.Ebinmin;
+//	for(int i = 0; i < detec.numberOfBins; i++){
+//		Bins[i] = 0;
+//		//F.params = &quad_param;
+//		//gsl_integration_qng(&F, Tanalmin, Tanalmax, ERRO_ABS, ERRO_REL, &integral, &abserr, &neval);
+//		//gsl_integration_qags(&F, Tanalmin, Tanalmax, ERRO_ABS, ERRO_REL, MAX_SUB_INT, w, &integral, &abserr);
+//		//Bins[i] = integral;
+//		/*Simpsons integration:*/
+//		/////
+//		Bins[i] += countRate[0]*resolutionFactor(E, E + detec.binsize, Tanalmin, detec.Eres);
+//		Bins[i] += countRate[N]*resolutionFactor(E, E + detec.binsize, Tanalmin + N*h, detec.Eres);
+//		for(int j = 0; j < N; j+=2){
+//			Bins[i] += 4*countRate[j]*resolutionFactor(E, E + detec.binsize, Tanalmin + j*h, detec.Eres);
+//			Bins[i] += 2*countRate[j+1]*resolutionFactor(E, E + detec.binsize, Tanalmin + (j+1)*h, detec.Eres);
+//		}
+//		Bins[i] *= h/3;
+//		/////
+//		E += detec.binsize;
+//		quad_param.E_current_bin += detec.binsize;
+//		Bins[i] *= detec.Ntau(quad_param.E_current_bin);
+//	}
+//	gsl_integration_workspace_free(w);
+//	delete [] T;
+//	delete [] countRate;
+//}
+
+void seta_BG(double *BG, int numberOfBins, string bg_file_name){
+	/*background file directory*/
+	string data_dir = "data/";
+	ifstream bg_file;
+	bg_file.open(data_dir + bg_file_name);
+	for(int i = 0; i < numberOfBins; i++)
+		bg_file >> BG[i];
+	bg_file.close();
+}
+
+void seta_exposure(double *exposure, int numberOfExpBins, string exp_file_name){
+	/*exposure file directory*/
+	string data_dir = "data/";
+	ifstream exp_file;
+	exp_file.open(data_dir + exp_file_name);
+	for(int i = 0; i < numberOfExpBins; i++)
+		exp_file >> exposure[i];
+	exp_file.close();
 }

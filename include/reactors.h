@@ -7,7 +7,6 @@
 #include<cstring>
 #include<string>
 #include"geoCoords.h"
-#include"energyConverts.h"
 
 using namespace std;
 
